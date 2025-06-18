@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { ElContainer, ElHeader, ElMain, ElMenu, ElMenuItem } from 'element-plus'
+
+const handleFeedback = () => {
+  window.open('https://liuyan.people.com.cn/pro-dfbbs-front/index', '_blank')
+}
 </script>
 
 <template>
@@ -10,7 +14,7 @@ import { ElContainer, ElHeader, ElMain, ElMenu, ElMenuItem } from 'element-plus'
         <el-menu mode="horizontal" :router="true">
           <el-menu-item index="/">首页</el-menu-item>
           <el-menu-item index="/map">地图</el-menu-item>
-          <el-menu-item index="/feedback">民意反馈</el-menu-item>
+          <el-menu-item index="#" @click="handleFeedback">民意反馈</el-menu-item>
         </el-menu>
       </div>
     </el-header>
@@ -24,6 +28,8 @@ import { ElContainer, ElHeader, ElMain, ElMenu, ElMenuItem } from 'element-plus'
 <style scoped>
 .app-container {
   height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 .header-content {
@@ -31,11 +37,29 @@ import { ElContainer, ElHeader, ElMain, ElMenu, ElMenuItem } from 'element-plus'
   align-items: center;
   justify-content: space-between;
   height: 100%;
+  padding: 0 20px;
+  max-width: 1920px;
+  margin: 0 auto;
 }
 
 h1 {
   margin: 0;
   font-size: 1.5rem;
   color: #409EFF;
+  white-space: nowrap;
+}
+
+:deep(.el-main) {
+  padding: 0;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+:deep(.el-header) {
+  padding: 0;
+  height: 60px !important;
+  background-color: #fff;
+  border-bottom: 1px solid #e4e7ed;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 </style>

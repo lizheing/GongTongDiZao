@@ -43,4 +43,13 @@ router.get('/status', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/domain', async (req: Request, res: Response) => {
+  try {
+    const stats = await statsService.getDomainStats();
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: '获取领域统计失败' });
+  }
+});
+
 export default router;

@@ -12,11 +12,6 @@ const router = createRouter({
       path: '/map',
       name: 'map',
       component: MapView
-    },
-    {
-      path: '/feedback',
-      name: 'feedback',
-      component: () => import('../views/FeedbackView.vue')
     }
   ]
 })

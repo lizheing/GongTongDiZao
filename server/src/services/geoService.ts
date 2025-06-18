@@ -66,7 +66,7 @@ export const geoService = {
       const rows = await db.any(`
         SELECT 
           gid,
-          "地名" as name,
+          "name" as name,
           ST_AsGeoJSON(geom)::json as geometry
         FROM wuhan
       `);
