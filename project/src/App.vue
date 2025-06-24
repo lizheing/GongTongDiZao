@@ -15,6 +15,7 @@ const handleFeedback = () => {
           <el-menu-item index="/">首页</el-menu-item>
           <el-menu-item index="/map">地图</el-menu-item>
           <el-menu-item index="#" @click="handleFeedback">民意反馈</el-menu-item>
+          <el-menu-item index="/admin-login">管理员登陆</el-menu-item>
         </el-menu>
       </div>
     </el-header>
