@@ -70,6 +70,5 @@ v2.2   BUG修复
 
 其他说明：
 shpfile 目录下为武汉市区县矢量数据（shapefile格式），是数据库中空间表wuhan的原始数据。
-领导留言板文本数据 目录下为原始留言数据（Excel/CSV格式），。
+领导留言板文本数据 目录下为原始留言数据（Excel/CSV格式）。
 如需扩展功能或二次开发，请参考 project 和 server 目录下的源码。
->>>>>>> Stashed changes
