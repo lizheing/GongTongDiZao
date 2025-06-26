@@ -84,6 +84,123 @@
       </el-card>
     </div>
   </div>
+
+  <!-- 区域留言查询弹窗 -->
+  <el-dialog
+    v-model="districtDialogVisible"
+    :title="`${selectedDistrict}留言信息`"
+    width="800px"
+    :before-close="clearDistrictSelection"
+    destroy-on-close
+  >
+    <div class="district-dialog-content">
+      <div class="result-summary">
+        <p>共找到 <strong>{{ districtMessages.total }}</strong> 条留言</p>
+      </div>
+      
+      <div class="message-list">
+        <div v-for="message in districtMessages.list" :key="message.message_id" class="message-item" @click="openMessageDetail(message)">
+          <div class="message-header">
+            <span class="message-subject">{{ message.subject }}</span>
+            <span class="message-status" :class="message.status">{{ message.status }}</span>
+          </div>
+          <div class="message-content">{{ message.content }}</div>
+          <div class="message-footer">
+            <span class="message-user">{{ message.user_nickname }}</span>
+            <span class="message-time">{{ message.message_time }}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 分页 -->
+      <div v-if="districtMessages.total > 0" class="pagination-container">
+        <el-pagination
+          v-model:current-page="districtCurrentPage"
+          v-model:page-size="districtPageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="districtMessages.total"
+          layout="total, sizes, prev, pager, next"
+          @size-change="handleDistrictSizeChange"
+          @current-change="handleDistrictCurrentChange"
+        />
+      </div>
+    </div>
+  </el-dialog>
+
+  <!-- 留言详情弹窗 -->
+  <el-dialog
+    v-model="messageDetailVisible"
+    title="留言详情"
+    width="900px"
+    :before-close="closeMessageDetail"
+    destroy-on-close
+  >
+    <div v-if="selectedMessage" class="message-detail-content">
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="留言ID">{{ selectedMessage.message_id }}</el-descriptions-item>
+        <el-descriptions-item label="原始ID">{{ selectedMessage.original_id }}</el-descriptions-item>
+        <el-descriptions-item label="用户昵称">{{ selectedMessage.user_nickname }}</el-descriptions-item>
+        <el-descriptions-item label="留言时间">{{ formatDateTime(selectedMessage.message_time) }}</el-descriptions-item>
+        <el-descriptions-item label="类别">{{ selectedMessage.category }}</el-descriptions-item>
+        <el-descriptions-item label="领域">{{ selectedMessage.domain }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="getStatusType(selectedMessage.status)">{{ selectedMessage.status }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="满意度">
+          <el-tag v-if="selectedMessage.satisfaction" :type="selectedMessage.satisfaction === '满意' ? 'success' : 'danger'">
+            {{ selectedMessage.satisfaction }}
+          </el-tag>
+          <span v-else>-</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="位置">{{ selectedMessage.location }}</el-descriptions-item>
+        <el-descriptions-item label="目标对象">{{ selectedMessage.target_object }}</el-descriptions-item>
+        <el-descriptions-item label="区域">{{ selectedMessage.district_name }}</el-descriptions-item>
+        <el-descriptions-item label="链接" :span="2">
+          <a v-if="selectedMessage.link_url" :href="selectedMessage.link_url" target="_blank" class="link-url">
+            {{ selectedMessage.link_url }}
+          </a>
+          <span v-else>-</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="留言标题" :span="2">{{ selectedMessage.subject }}</el-descriptions-item>
+        <el-descriptions-item label="留言内容" :span="2">
+          <div class="message-content-full">{{ selectedMessage.content }}</div>
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <!-- 回复信息 -->
+      <div v-if="selectedMessage.reply_content" class="reply-section">
+        <h4>回复信息</h4>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="回复ID">{{ selectedMessage.reply_id }}</el-descriptions-item>
+          <el-descriptions-item label="回复人">{{ selectedMessage.reply_nickname }}</el-descriptions-item>
+          <el-descriptions-item label="回复机构">{{ selectedMessage.reply_organization }}</el-descriptions-item>
+          <el-descriptions-item label="回复时间">{{ formatDateTime(selectedMessage.reply_time) }}</el-descriptions-item>
+          <el-descriptions-item label="回复内容" :span="2">
+            <div class="reply-content">{{ selectedMessage.reply_content }}</div>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <!-- 评分信息 -->
+      <div v-if="selectedMessage.solution_score || selectedMessage.attitude_score || selectedMessage.speed_score" class="score-section">
+        <h4>评分信息</h4>
+        <el-descriptions :column="3" border>
+          <el-descriptions-item label="解决方案评分">
+            <el-rate v-if="selectedMessage.solution_score" :value="selectedMessage.solution_score" disabled />
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="服务态度评分">
+            <el-rate v-if="selectedMessage.attitude_score" :value="selectedMessage.attitude_score" disabled />
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="处理速度评分">
+            <el-rate v-if="selectedMessage.speed_score" :value="selectedMessage.speed_score" disabled />
+            <span v-else>-</span>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+    </div>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -110,18 +227,75 @@ import { Control, defaults as defaultControls } from 'ol/control'
 import { ElButton, ElButtonGroup, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
 import { Type } from 'ol/geom/Geometry'
 import { LineString, Polygon } from 'ol/geom'
+import { Close } from '@element-plus/icons-vue'
 
-// 地图相关
+// ================== 地图与图层模块 ==================
+// 地图容器与实例
 const mapContainer = ref<HTMLElement | null>(null)
 const map = ref<Map | null>(null)
-const featureSource = new VectorSource()
 
-// 图表相关
+// 区域矢量图层
+const featureSource = new VectorSource()
+const featureLayer = new VectorLayer({
+  source: featureSource,
+  style: function(feature) {
+    const districtName = feature.get('name')
+    const color = districtColors[districtName] || '#CCCCCC'
+    const rgba = color.match(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/) 
+      ? `rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, 0.6)`
+      : 'rgba(204, 204, 204, 0.6)'
+    return new Style({
+      fill: new Fill({ color: rgba }),
+      stroke: new Stroke({ color: '#666666', width: 1 })
+    })
+  }
+})
+
+// 底图图层
+const osmSource = new OSM()
+const amapSatelliteSource = new XYZ({
+  url: 'https://webst0{1-4}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+  crossOrigin: 'anonymous'
+})
+const amapRoadSource = new XYZ({
+  url: 'https://webst0{1-4}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}',
+  crossOrigin: 'anonymous'
+})
+const osmLayer = new TileLayer({ source: osmSource, visible: true })
+const amapSatelliteLayer = new TileLayer({ source: amapSatelliteSource, visible: false })
+const amapRoadLayer = new TileLayer({ source: amapRoadSource, visible: false })
+
+// ================== 测量功能模块 ==================
+const measureSource = new VectorSource()
+const measureLayer = new VectorLayer({
+  source: measureSource,
+  style: new Style({
+    fill: new Fill({ color: 'rgba(255, 255, 255, 0.2)' }),
+    stroke: new Stroke({ color: '#ffcc33', width: 2 }),
+    image: new CircleStyle({ radius: 7, fill: new Fill({ color: '#ffcc33' }) })
+  })
+})
+let draw: Draw | null = null
+let listener: any = null
+let sketch: any = null
+let measureTooltipElement: HTMLElement | null = null
+let measureTooltip: Overlay | null = null
+
+// ================== 图表与统计模块 ==================
 const categoryChart = ref<HTMLElement | null>(null)
 const domainChart = ref<HTMLElement | null>(null)
 const districtChart = ref<HTMLElement | null>(null)
 const satisfactionChart = ref<HTMLElement | null>(null)
 const statusChart = ref<HTMLElement | null>(null)
+
+// ================== 区域与留言模块 ==================
+const selectedDistrict = ref<string>('')
+const districtMessages = ref<{ total: number; list: any[]; districtName?: string }>({ total: 0, list: [] })
+const districtCurrentPage = ref(1)
+const districtPageSize = ref(10)
+const districtDialogVisible = ref(false)
+const messageDetailVisible = ref(false)
+const selectedMessage = ref<any>(null)
 
 // 区域颜色配置
 const districtColors = {
@@ -139,74 +313,6 @@ const districtColors = {
   '黄陂区': '#F5F5DC',  // 米色
   '新洲区': '#E0FFFF'   // 淡青色
 }
-
-// 修改矢量图层配置
-const featureLayer = new VectorLayer({
-  source: featureSource,
-  style: function(feature) {
-    const districtName = feature.get('name')  // 获取区域名称
-    const color = districtColors[districtName] || '#CCCCCC'
-    // 将颜色转换为rgba格式，添加0.6的透明度
-    const rgba = color.match(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/) 
-      ? `rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, 0.6)`
-      : 'rgba(204, 204, 204, 0.6)'  // 默认颜色的透明版本
-    return new Style({
-      fill: new Fill({
-        color: rgba
-      }),
-      stroke: new Stroke({
-        color: '#666666',
-        width: 1
-      })
-    })
-  }
-})
-
-// 底图源
-const osmSource = new OSM()
-// 高德卫星图层
-const amapSatelliteSource = new XYZ({
-  url: 'https://webst0{1-4}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
-  crossOrigin: 'anonymous'
-})
-// 高德路网图层
-const amapRoadSource = new XYZ({
-  url: 'https://webst0{1-4}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}',
-  crossOrigin: 'anonymous'
-})
-
-// 底图图层
-const osmLayer = new TileLayer({ source: osmSource, visible: true })
-const amapSatelliteLayer = new TileLayer({ source: amapSatelliteSource, visible: false })
-const amapRoadLayer = new TileLayer({ source: amapRoadSource, visible: false })
-
-// 测量绘制图层
-const measureSource = new VectorSource()
-const measureLayer = new VectorLayer({
-  source: measureSource,
-  style: new Style({
-    fill: new Fill({
-      color: 'rgba(255, 255, 255, 0.2)'
-    }),
-    stroke: new Stroke({
-      color: '#ffcc33',
-      width: 2
-    }),
-    image: new CircleStyle({
-      radius: 7,
-      fill: new Fill({
-        color: '#ffcc33'
-      })
-    })
-  })
-})
-
-// 当前测量工具
-let draw: Draw | null = null
-let measureTooltipElement: HTMLElement | null = null
-let measureTooltip: Overlay | null = null
-let sketch: any = null
-let listener: any = null
 
 // 创建测量提示
 const createMeasureTooltip = () => {
@@ -247,7 +353,10 @@ const formatArea = (polygon: any) => {
   return output
 }
 
-// 添加交互
+// 撤销addInteraction中的crosshair设置
+// 在draw添加和移除时动态监听和恢复鼠标样式
+let prevCursor = ''
+
 const addInteraction = (type: string) => {
   if (map.value) {
     const geometryType: Type = type === 'area' ? 'Polygon' : 'LineString'
@@ -274,6 +383,12 @@ const addInteraction = (type: string) => {
         })
       })
     })
+
+    // 只在draw激活时设置crosshair，记录原始cursor
+    if (mapContainer.value) {
+      prevCursor = mapContainer.value.style.cursor
+      mapContainer.value.style.cursor = 'crosshair'
+    }
 
     if (draw) {
       map.value.addInteraction(draw)
@@ -334,48 +449,8 @@ const switchBaseMap = (type: string) => {
 
 // 开始测量
 const startMeasure = (type: string) => {
-  // 清除之前的测量
-  if (draw && map.value) {
-    map.value.removeInteraction(draw)
-  }
-  measureSource.clear()
-  if (measureTooltip) {
-    map.value?.removeOverlay(measureTooltip)
-  }
-  
-  // 添加新的测量交互
+  stopMeasure() // 先移除旧的交互和状态
   addInteraction(type)
-}
-
-// 停止测量
-const stopMeasure = () => {
-  // 移除绘图交互
-  if (draw) {
-    map.value?.removeInteraction(draw)
-    draw = null
-  }
-  
-  // 清除测量图层上的所有要素
-  measureSource.clear()
-  
-  // 移除所有测量提示
-  if (map.value) {
-    const overlays = map.value.getOverlays().getArray()
-    overlays.slice().forEach(overlay => {
-      if (overlay.getElement()?.className.includes('ol-tooltip')) {
-        map.value?.removeOverlay(overlay)
-      }
-    })
-  }
-  
-  // 重置相关变量
-  measureTooltipElement = null
-  measureTooltip = null
-  sketch = null
-  if (listener) {
-    unByKey(listener)
-    listener = null
-  }
 }
 
 // 加载地图数据
@@ -424,6 +499,48 @@ const loadStats = async () => {
     }
   } catch (error) {
     ElMessage.error('加载统计数据失败，请检查后端服务是否正常运行');
+  }
+}
+
+// 查询指定区域的留言
+const queryDistrictMessages = async (districtName: string) => {
+  try {
+    const response = await axios.get(`http://localhost:3000/api/messages/district/${encodeURIComponent(districtName)}`, {
+      params: {
+        page: districtCurrentPage.value,
+        pageSize: districtPageSize.value
+      }
+    });
+    districtMessages.value = response.data;
+    selectedDistrict.value = districtName;
+    districtDialogVisible.value = true; // 显示弹窗
+  } catch (error) {
+    ElMessage.error('查询区域留言失败');
+  }
+}
+
+// 清除区域选择
+const clearDistrictSelection = () => {
+  selectedDistrict.value = '';
+  districtMessages.value = { total: 0, list: [] };
+  districtCurrentPage.value = 1;
+  districtDialogVisible.value = false; // 隐藏弹窗
+}
+
+// 处理区域分页大小变化
+const handleDistrictSizeChange = (size: number) => {
+  districtPageSize.value = size;
+  districtCurrentPage.value = 1;
+  if (selectedDistrict.value) {
+    queryDistrictMessages(selectedDistrict.value);
+  }
+}
+
+// 处理区域分页当前页变化
+const handleDistrictCurrentChange = (page: number) => {
+  districtCurrentPage.value = page;
+  if (selectedDistrict.value) {
+    queryDistrictMessages(selectedDistrict.value);
   }
 }
 
@@ -532,8 +649,10 @@ const initDistrictChart = (data: any[]) => {
       type: 'category', 
       data: data.map(item => item.district_name),
       axisLabel: {
-        interval: 0,
-        rotate: 30
+        interval: 'auto',
+        rotate: 45,
+        fontSize: 12,
+        overflow: 'break'
       }
     },
     yAxis: { type: 'value' },
@@ -638,6 +757,57 @@ const initStatusChart = (data: any[]) => {
   })
 }
 
+// 格式化时间
+const formatDateTime = (timestamp: string) => {
+  const date = new Date(timestamp);
+  return date.toLocaleString();
+}
+
+// 获取状态类型
+const getStatusType = (status: string) => {
+  const statusTypes: Record<string, string> = {
+    '已办理': 'success',
+    '办理中': 'info',
+    '待回复': 'warning'
+  };
+  return statusTypes[status] || 'info';
+}
+
+// 打开留言详情
+const openMessageDetail = (message: any) => {
+  selectedMessage.value = message;
+  messageDetailVisible.value = true;
+}
+
+// 关闭留言详情
+const closeMessageDetail = () => {
+  selectedMessage.value = null;
+  messageDetailVisible.value = false;
+}
+
+// 停止测量：只清理交互和 feature，不重建地图
+const stopMeasure = () => {
+  if (!map.value) return;
+  // 移除所有 Draw 交互
+  map.value.getInteractions().getArray().slice().forEach(interaction => {
+    if (interaction instanceof Draw) {
+      map.value.removeInteraction(interaction);
+    }
+  });
+  draw = null;
+  measureSource.clear();
+  // 清理 overlay/tooltip
+  map.value.getOverlays().getArray().slice().forEach(overlay => {
+    map.value?.removeOverlay(overlay);
+  });
+  // 恢复鼠标样式
+  if (mapContainer.value) mapContainer.value.style.cursor = '';
+  const viewport = map.value.getViewport();
+  if (viewport) viewport.style.cursor = '';
+  document.body.style.cursor = '';
+};
+
+// onMounted 只初始化一次地图
 onMounted(async () => {
   if (mapContainer.value) {
     map.value = new Map({
@@ -650,21 +820,27 @@ onMounted(async () => {
         measureLayer
       ],
       view: new View({
-        center: fromLonLat([114.3055, 30.5928]),
-        zoom: 9,
-        maxZoom: 19,
-        minZoom: 4
+        center: fromLonLat([114.305393, 30.593099]),
+        zoom: 10,
+        minZoom: 8,
+        maxZoom: 18
       }),
-      controls: defaultControls({
-        zoom: true,
-        attribution: false,
-        rotate: false
-      })
-    })
-    await loadMapData()
-    await loadStats()
+      controls: defaultControls({ attribution: false, zoom: true, rotate: false })
+    });
+    // 注册地图点击事件
+    map.value.on('click', (event) => {
+      const feature = map.value?.forEachFeatureAtPixel(event.pixel, (feature) => feature);
+      if (feature && feature.get('name')) {
+        const districtName = feature.get('name');
+        selectedDistrict.value = districtName;
+        districtDialogVisible.value = true;
+        queryDistrictMessages(districtName);
+      }
+    });
+    await loadMapData();
+    await loadStats();
   }
-})
+});
 
 onUnmounted(() => {
   if (map.value) {
@@ -837,5 +1013,269 @@ h3 {
 
 .stat-panel::-webkit-scrollbar-track {
   background-color: #f5f7fa;
+}
+
+/* 弹窗内容样式 */
+.district-dialog-content {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.result-summary {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f0f9ff;
+  border-radius: 6px;
+  border-left: 4px solid #409EFF;
+}
+
+.result-summary p {
+  margin: 0;
+  color: #303133;
+  font-size: 14px;
+}
+
+.message-list {
+  margin-bottom: 16px;
+}
+
+.message-item {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  background-color: #fafafa;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.message-item:hover {
+  border-color: #409EFF;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+  background-color: #f0f9ff;
+}
+
+.message-item:active {
+  transform: translateY(1px);
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.message-subject {
+  font-weight: bold;
+  color: #303133;
+  font-size: 15px;
+}
+
+.message-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: white;
+  font-weight: 500;
+}
+
+.message-status.已办理 {
+  background-color: #67C23A;
+}
+
+.message-status.办理中 {
+  background-color: #409EFF;
+}
+
+.message-status.待回复 {
+  background-color: #E6A23C;
+}
+
+.message-content {
+  margin: 8px 0;
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.message-user {
+  font-weight: 500;
+  color: #409EFF;
+}
+
+.message-time {
+  color: #c0c4cc;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e7ed;
+}
+
+/* 留言详情弹窗样式 */
+.message-detail-content {
+  padding: 20px;
+}
+
+.message-detail-content .el-descriptions {
+  margin-bottom: 20px;
+}
+
+.reply-section,
+.score-section {
+  margin-top: 20px;
+}
+
+.reply-section h4,
+.score-section h4 {
+  margin-bottom: 15px;
+  color: #303133;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.message-content-full,
+.reply-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.6;
+  color: #606266;
+  background-color: #f8f9fa;
+  padding: 12px;
+  border-radius: 4px;
+  border-left: 4px solid #409EFF;
+}
+
+.link-url {
+  color: #409EFF;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.link-url:hover {
+  text-decoration: underline;
+}
+
+body.dark .el-dialog__wrapper,
+:root.dark .el-dialog__wrapper {
+  background: rgba(0,0,0,0.7) !important;
+}
+body.dark .el-dialog,
+:root.dark .el-dialog {
+  background: #232323 !important;
+  color: #fff !important;
+  border-radius: 10px;
+  border: 1px solid #333 !important;
+}
+body.dark .district-dialog-content,
+:root.dark .district-dialog-content {
+  background: #232323 !important;
+  color: #fff !important;
+}
+body.dark .result-summary,
+:root.dark .result-summary {
+  background: #222 !important;
+  color: #fff !important;
+  border-left: 4px solid #ffd700 !important;
+}
+body.dark .message-item,
+:root.dark .message-item {
+  background: #181818 !important;
+  border: 1px solid #444 !important;
+  color: #fff !important;
+}
+body.dark .message-item:hover,
+:root.dark .message-item:hover {
+  background: #232323 !important;
+  border-color: #ffd700 !important;
+}
+body.dark .message-header,
+:root.dark .message-header {
+  color: #fff !important;
+}
+body.dark .message-subject,
+:root.dark .message-subject {
+  color: #ffd700 !important;
+}
+body.dark .message-content,
+:root.dark .message-content {
+  color: #eee !important;
+}
+body.dark .message-footer,
+:root.dark .message-footer {
+  color: #aaa !important;
+}
+body.dark .message-user,
+:root.dark .message-user {
+  color: #8ecfff !important;
+}
+body.dark .message-time,
+:root.dark .message-time {
+  color: #888 !important;
+}
+body.dark .pagination-container,
+:root.dark .pagination-container {
+  border-top: 1px solid #444 !important;
+}
+body.dark .message-detail-content,
+:root.dark .message-detail-content {
+  background: #232323 !important;
+  color: #fff !important;
+}
+body.dark .reply-section h4,
+body.dark .score-section h4,
+:root.dark .reply-section h4,
+:root.dark .score-section h4 {
+  color: #ffd700 !important;
+}
+body.dark .message-content-full,
+body.dark .reply-content,
+:root.dark .message-content-full,
+:root.dark .reply-content {
+  background: #181818 !important;
+  color: #eee !important;
+  border-left: 4px solid #ffd700 !important;
+}
+body.dark .stat-panel,
+:root.dark .stat-panel {
+  background: #181818 !important;
+  border-right: 1px solid #222 !important;
+}
+body.dark .stat-card,
+:root.dark .stat-card {
+  background: #232323 !important;
+  border: 1px solid #333 !important;
+}
+body.dark .card-header,
+:root.dark .card-header {
+  color: #ffd700 !important;
+  border-bottom: 1px solid #333 !important;
+}
+body.dark .map-controls,
+:root.dark .map-controls {
+  background: rgba(30,30,30,0.95) !important;
+  border: 1px solid #333 !important;
+}
+body.dark .el-pagination,
+:root.dark .el-pagination {
+  background: transparent !important;
+  color: #fff !important;
 }
 </style>

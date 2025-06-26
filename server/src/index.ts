@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import geoRoutes from './routes/geoRoutes';
 import statsRoutes from './routes/statsRoutes';
+import messagesRoutes from './routes/messagesRoutes';
 
 dotenv.config();
 
@@ -15,6 +16,7 @@ app.use(express.json());
 // 路由
 app.use('/api/geo', geoRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/messages', messagesRoutes);
 
 app.listen(port, () => {
   console.log(`服务器运行在 http://localhost:${port}`);

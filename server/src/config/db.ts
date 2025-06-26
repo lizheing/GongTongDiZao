@@ -13,6 +13,8 @@ const config = {
   password: process.env.DB_PASSWORD,
 };
 
+console.log('DB Config:', config);
+
 const db = pgp(config);
 
 export default db; 

@@ -5,7 +5,37 @@
         <span>管理员后台 - message表管理</span>
         <el-button type="primary" size="small" style="float:right" @click="openAddDialog">新增留言</el-button>
       </template>
-      <el-table :data="messageList" border stripe style="width: 100%" height="600px">
+      <!-- 检索表单 -->
+      <el-form :inline="true" :model="search" class="search-form" @submit.prevent>
+        <el-form-item label="关键词">
+          <el-input v-model="search.keyword" placeholder="昵称/主题/内容" clearable style="width: 180px" />
+        </el-form-item>
+        <el-form-item label="类别">
+          <el-select v-model="search.category" clearable placeholder="全部">
+            <el-option v-for="item in categoryOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="领域">
+          <el-select v-model="search.domain" clearable placeholder="全部">
+            <el-option v-for="item in domainOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="search.status" clearable placeholder="全部">
+            <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="地区">
+          <el-select v-model="search.district_name" clearable placeholder="全部">
+            <el-option v-for="item in districtOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
+          <el-button @click="resetSearch">重置</el-button>
+        </el-form-item>
+      </el-form>
+      <el-table :data="messageList" border stripe style="width: 100%" height="600px" :loading="loading">
         <el-table-column prop="message_id" label="ID" width="80" fixed />
         <el-table-column prop="original_id" label="原始ID" width="100" />
         <el-table-column prop="link_url" label="链接" width="120" />
@@ -28,7 +58,6 @@
         <el-table-column prop="solution_score" label="解决分" width="80" />
         <el-table-column prop="attitude_score" label="态度分" width="80" />
         <el-table-column prop="speed_score" label="速度分" width="80" />
-        <el-table-column prop="wuhan_gid" label="武汉GID" width="100" />
         <el-table-column prop="district_name" label="地区" width="100" />
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="scope">
@@ -37,6 +66,18 @@
           </template>
         </el-table-column>
       </el-table>
+      <div style="margin: 16px 0; text-align: right;">
+        <el-pagination
+          background
+          layout="total, prev, pager, next, jumper, sizes"
+          :total="total"
+          :page-size="pageSize"
+          :current-page="page"
+          :page-sizes="[10, 20, 50, 100]"
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </div>
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
@@ -95,8 +136,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, onMounted, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import axios from 'axios'
 
 // 下拉选项
 const categoryOptions = ['投诉/求助', '咨询', '建言']
@@ -105,23 +147,144 @@ const statusOptions = ['已办理', '办理中', '待回复']
 const satisfactionOptions = ['满意', '不满意']
 const districtOptions = ['江岸区', '江汉区', '硚口区', '汉阳区', '武昌区', '青山区', '洪山区', '东西湖区', '汉南区', '蔡甸区', '江夏区', '黄陂区', '新洲区']
 
-// 数据列表
-const messageList = ref([])
+// 区名与武汉GID映射
+const districtGidMap = {
+  '江岸区': 1,
+  '江汉区': 2,
+  '硚口区': 3,
+  '汉阳区': 4,
+  '武昌区': 5,
+  '青山区': 6,
+  '洪山区': 7,
+  '东西湖区': 8,
+  '汉南区': 9,
+  '蔡甸区': 10,
+  '江夏区': 11,
+  '黄陂区': 12,
+  '新洲区': 13
+}
+const gidDistrictMap = Object.fromEntries(Object.entries(districtGidMap).map(([k, v]) => [v, k]))
+
+// 分页与检索
+const messageList = ref<any[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const loading = ref(false)
+const search = reactive({ keyword: '', category: '', domain: '', status: '', district_name: '' })
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const form = reactive<any>({})
 const formRef = ref()
 const rules = {
+  original_id: [{ required: true, message: '请输入原始ID', trigger: 'blur' }],
+  link_url: [{ required: true, message: '请输入链接', trigger: 'blur' }],
   user_nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
+  original_message_id: [{ required: true, message: '请输入原始留言ID', trigger: 'blur' }],
   subject: [{ required: true, message: '请输入主题', trigger: 'blur' }],
+  message_time: [{ required: true, message: '请选择留言时间', trigger: 'change' }],
   category: [{ required: true, message: '请选择类别', trigger: 'change' }],
   domain: [{ required: true, message: '请选择领域', trigger: 'change' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
-  message_time: [{ required: true, message: '请选择留言时间', trigger: 'change' }],
+  location: [{ required: true, message: '请输入位置', trigger: 'blur' }],
+  target_object: [{ required: true, message: '请输入目标对象', trigger: 'blur' }],
   content: [{ required: true, message: '请输入内容', trigger: 'blur' }],
+  reply_id: [{ required: true, message: '请输入回复ID', trigger: 'blur' }],
+  reply_nickname: [{ required: true, message: '请输入回复人昵称', trigger: 'blur' }],
+  reply_organization: [{ required: true, message: '请输入回复单位', trigger: 'blur' }],
+  reply_time: [
+    { required: true, message: '请选择回复时间', trigger: 'change' },
+    { validator: (rule: any, value: any, callback: any) => {
+        if (value && form.message_time) {
+          const reply = new Date(value).getTime();
+          const message = new Date(form.message_time).getTime();
+          if (!isNaN(reply) && !isNaN(message) && reply <= message) {
+            callback(new Error('回复时间必须在留言时间之后'));
+            return;
+          }
+        }
+        callback();
+      }, trigger: 'change' }
+  ],
+  reply_content: [{ required: true, message: '请输入回复内容', trigger: 'blur' }],
   satisfaction: [{ required: true, message: '请选择满意度', trigger: 'change' }],
+  solution_score: [
+    { required: true, message: '请输入解决分', trigger: 'blur' },
+    { validator: (rule: any, value: any, callback: any) => {
+        const num = Number(value);
+        if (isNaN(num) || num < 1 || num > 5) {
+          callback(new Error('解决分只能是1到5之间的整数'));
+          return;
+        }
+        callback();
+      }, trigger: 'blur' }
+  ],
+  attitude_score: [
+    { required: true, message: '请输入态度分', trigger: 'blur' },
+    { validator: (rule: any, value: any, callback: any) => {
+        const num = Number(value);
+        if (isNaN(num) || num < 1 || num > 5) {
+          callback(new Error('态度分只能是1到5之间的整数'));
+          return;
+        }
+        callback();
+      }, trigger: 'blur' }
+  ],
+  speed_score: [
+    { required: true, message: '请输入速度分', trigger: 'blur' },
+    { validator: (rule: any, value: any, callback: any) => {
+        const num = Number(value);
+        if (isNaN(num) || num < 1 || num > 5) {
+          callback(new Error('速度分只能是1到5之间的整数'));
+          return;
+        }
+        callback();
+      }, trigger: 'blur' }
+  ],
+  wuhan_gid: [{ required: false, message: '请输入武汉GID', trigger: 'blur' }],
   district_name: [{ required: true, message: '请选择地区', trigger: 'change' }]
 }
+
+// 加载数据
+async function loadMessages() {
+  loading.value = true
+  try {
+    const params = { ...search, page: page.value, pageSize: pageSize.value }
+    const res = await axios.get('/api/messages', { params })
+    messageList.value = res.data.list
+    total.value = res.data.total
+  } catch (e) {
+    ElMessage.error('加载数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleSearch() {
+  page.value = 1
+  loadMessages()
+}
+
+function resetSearch() {
+  Object.assign(search, { keyword: '', category: '', domain: '', status: '', district_name: '' })
+  page.value = 1
+  loadMessages()
+}
+
+function handlePageChange(val: number) {
+  page.value = val
+  loadMessages()
+}
+
+function handleSizeChange(val: number) {
+  pageSize.value = val
+  page.value = 1
+  loadMessages()
+}
+
+onMounted(() => {
+  loadMessages()
+})
 
 function openAddDialog() {
   dialogTitle.value = '新增留言'
@@ -161,27 +324,57 @@ function openEditDialog(row: any) {
 }
 
 function submitForm() {
-  formRef.value.validate((valid: boolean) => {
+  formRef.value.validate(async (valid: boolean) => {
     if (!valid) return
-    if (dialogTitle.value === '新增留言') {
-      form.message_id = Date.now()
-      messageList.value.push({ ...form })
-      ElMessage.success('新增成功')
-    } else {
-      const idx = messageList.value.findIndex((item) => item.message_id === form.message_id)
-      if (idx !== -1) {
-        messageList.value[idx] = { ...form }
+    try {
+      if (dialogTitle.value === '新增留言') {
+        await axios.post('/api/messages', form)
+        ElMessage.success('新增成功')
+      } else {
+        await axios.put(`/api/messages/${form.message_id}`, form)
         ElMessage.success('编辑成功')
       }
+      dialogVisible.value = false
+      loadMessages()
+    } catch (e) {
+      ElMessage.error('操作失败')
     }
-    dialogVisible.value = false
   })
 }
 
 function deleteMessage(id: number) {
-  messageList.value = messageList.value.filter(item => item.message_id !== id)
-  ElMessage.success('删除成功')
+  ElMessageBox.confirm('确定要删除这条留言吗？', '提示', { type: 'warning' })
+    .then(async () => {
+      try {
+        await axios.delete(`/api/messages/${id}`)
+        ElMessage.success('删除成功')
+        loadMessages()
+      } catch (e) {
+        ElMessage.error('删除失败')
+      }
+    })
 }
+
+watch(
+  () => form.district_name,
+  (val) => {
+    if (val && districtGidMap[val]) {
+      form.wuhan_gid = districtGidMap[val]
+    } else {
+      form.wuhan_gid = ''
+    }
+  }
+)
+watch(
+  () => form.wuhan_gid,
+  (val) => {
+    if (val && gidDistrictMap[val]) {
+      form.district_name = gidDistrictMap[val]
+    } else {
+      form.district_name = ''
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -195,5 +388,8 @@ function deleteMessage(id: number) {
 .el-card {
   width: 100%;
   max-width: 1800px;
+}
+.search-form {
+  margin-bottom: 16px;
 }
 </style> 
